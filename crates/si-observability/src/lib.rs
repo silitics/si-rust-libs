@@ -123,7 +123,7 @@
 //!
 //! This crate has the following feature flags:
 //!
-//! - `clap4`: Support for [`clap`][clap4](version 4) CLI arguments.
+//! - `clap4`: Support for [`clap`][clap4] (version 4) CLI arguments.
 //! - `otlp`: Support for exporting traces via [OTLP].
 
 use core::fmt;
