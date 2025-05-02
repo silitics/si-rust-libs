@@ -1,0 +1,12 @@
+{
+    "version": "0.2",
+    "words": [
+        "ansi",
+        "clicolors",
+        "docsrs",
+        "jaegertracing",
+        "opentelemetry",
+        "otlp",
+        "protobuf"
+    ]
+}
