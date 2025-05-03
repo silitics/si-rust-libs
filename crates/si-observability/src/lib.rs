@@ -98,8 +98,8 @@
 //! the configuration of OTLP endpoints and headers, follow the [OpenTelemetry standard].
 //! At the moment, trace export is limited to the `http/protobuf` protocol.
 //!
-//! Use the variable `OTEL_RESOURCE_ATTRIBUTES` to set OpenTelemetry resource attributes.
-//! For instance:
+//! You can use the variable `OTEL_RESOURCE_ATTRIBUTES` to set OpenTelemetry resource
+//! attributes. For instance:
 //!
 //! ```plain
 //! OTEL_RESOURCE_ATTRIBUTES="service.name=my-app,service.instance.id=my-app-instance-1"
