@@ -8,3 +8,8 @@ check:
     cargo +nightly fmt --check
     cargo +nightly clippy --all-targets --all-features -- -D warnings
     cargo deny check
+    taplo fmt --check
+
+fmt:
+    cargo +nightly fmt
+    taplo fmt

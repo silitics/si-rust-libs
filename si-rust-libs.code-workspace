@@ -1,0 +1,6 @@
+{
+  "folders": [{ "name": "si-rust-libs", "path": "." }],
+  "settings": {
+    "rust-analyzer.rustfmt.extraArgs": ["+nightly"]
+  }
+}
