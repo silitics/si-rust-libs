@@ -20,10 +20,16 @@ where
     let log_env_var = format!("{}_LOG_OTLP", initializer.env_var_prefix);
 
     if std::env::var_os(&log_env_var).is_some() {
-        let exporter = opentelemetry_otlp::SpanExporter::builder()
+        let exporter = match opentelemetry_otlp::SpanExporter::builder()
             .with_http()
             .build()
-            .unwrap();
+        {
+            Ok(exporter) => exporter,
+            Err(error) => {
+                eprintln!("ERROR: Unable to create OTLP exporter. {error}");
+                return Default::default();
+            }
+        };
         let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
             .with_resource(Resource::builder().build())
             .with_batch_exporter(exporter)
@@ -47,14 +53,14 @@ where
             },
         )
     } else {
-        (None, FinalizeGuard { provider: None })
+        Default::default()
     }
 }
 
 /// OTLP finalization guard.
 ///
 /// This guard force flushes any outstanding traces.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct FinalizeGuard {
     provider: Option<SdkTracerProvider>,
 }
