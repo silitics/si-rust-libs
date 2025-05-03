@@ -146,6 +146,7 @@ mod otlp;
 
 /// Observability initializer.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct Initializer {
     /// Application environment variable prefix.
     env_var_prefix: String,
@@ -282,6 +283,6 @@ pub struct FinalizeGuard {
 impl FinalizeGuard {
     /// Finalize everything by dropping the guard.
     pub fn finalize(self) {
-        drop(self)
+        drop(self);
     }
 }

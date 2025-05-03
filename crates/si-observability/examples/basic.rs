@@ -17,7 +17,7 @@ pub fn do_stuff(iterations: u64) {
     for iteration in 0..iterations {
         tracing::debug!(iteration, "Actually getting something done!");
         std::thread::sleep(Duration::from_millis(50));
-        do_stuff_inner()
+        do_stuff_inner();
     }
 }
 

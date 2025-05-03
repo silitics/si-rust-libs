@@ -69,7 +69,7 @@ impl Drop for FinalizeGuard {
     fn drop(&mut self) {
         if let Some(provider) = &self.provider {
             if let Err(error) = provider.force_flush() {
-                eprintln!("ERROR: Unable to flush traces via OTLP. {error}")
+                eprintln!("ERROR: Unable to flush traces via OTLP. {error}");
             }
         }
     }

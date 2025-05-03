@@ -10,3 +10,7 @@ repository = "https://github.com/silitics/si-rust-libs/"
 [workspace.dependencies]
 console = "0.15.11"
 tracing = "0.1.41"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+pedantic = { level = "warn", priority = -1 }

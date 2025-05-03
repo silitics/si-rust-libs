@@ -25,7 +25,7 @@ impl Configuration for LoggingArgs {
             initializer.stderr_logging_format = Some(match log_format {
                 LogFormatArg::Compact => StderrLogFormat::Compact,
                 LogFormatArg::Full => StderrLogFormat::Full,
-            })
+            });
         }
         if let Some(log_level) = &self.log_level {
             initializer.stderr_default_level = match log_level {
