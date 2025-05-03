@@ -1,6 +1,6 @@
 [package]
 name = "si-observability"
-version = "0.1.1"
+version = "0.1.2"
 description = "This crate provides a reusable basis for developing applications with strong, built-in observability."
 edition = "2024"
 authors.workspace = true
