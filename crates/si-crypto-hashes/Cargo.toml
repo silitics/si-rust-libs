@@ -1,0 +1,24 @@
+[package]
+name = "si-crypto-hashes"
+version = "0.1.0"
+description = "This crate provides a reusable functionality for working with typical cryptographic hashes."
+edition = "2024"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+hex = "0.4.3"
+serde = { version = "1.0.219", optional = true }
+sha2 = "0.10.9"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
