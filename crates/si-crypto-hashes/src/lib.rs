@@ -269,7 +269,7 @@ where
         match self.algorithm {
             HashAlgorithm::Sha512_256 if cfg!(feature = "legacy") => f.write_str("sha512-256")?,
             _ => f.write_str(self.algorithm.name())?,
-        };
+        }
         if cfg!(feature = "legacy") {
             f.write_char(':')?;
         } else {
