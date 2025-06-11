@@ -33,7 +33,7 @@ impl<'de> serde::Deserialize<'de> for HashAlgorithm {
     }
 }
 
-impl serde::Serialize for HashDigest {
+impl<D: AsRef<[u8]>> serde::Serialize for HashDigest<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -42,15 +42,17 @@ impl serde::Serialize for HashDigest {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for HashDigest {
+impl<'de, Data: From<Vec<u8>>> serde::Deserialize<'de> for HashDigest<Data> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct Visitor;
+        struct Visitor<Data> {
+            _marker: std::marker::PhantomData<Data>,
+        }
 
-        impl serde::de::Visitor<'_> for Visitor {
-            type Value = HashDigest;
+        impl<Data: From<Vec<u8>>> serde::de::Visitor<'_> for Visitor<Data> {
+            type Value = HashDigest<Data>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("hash digest")
@@ -62,6 +64,8 @@ impl<'de> serde::Deserialize<'de> for HashDigest {
             }
         }
 
-        deserializer.deserialize_str(Visitor)
+        deserializer.deserialize_str(Visitor {
+            _marker: std::marker::PhantomData,
+        })
     }
 }
