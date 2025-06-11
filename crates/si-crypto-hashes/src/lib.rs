@@ -38,7 +38,7 @@
 //!
 //! This crate supports the following features:
 //!
-//! - `serde`: Enables serialization and deserialization support using Serde.
+//! - `serde`: Enable serialization and deserialization support using Serde.
 //! - `legacy`: Use legacy formatting and algorithm names for compatibility with older
 //!   parsers.
 
