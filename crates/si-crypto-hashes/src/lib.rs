@@ -33,6 +33,14 @@
 //! clicking in most applications.
 //!
 //! In the future, we may add additional hash algorithms.
+//!
+//! # Features
+//!
+//! This crate supports the following features:
+//!
+//! - `serde`: Enables serialization and deserialization support using Serde.
+//! - `legacy`: Use legacy formatting and algorithm names for compatibility with older
+//!   parsers.
 
 use std::fmt::Write;
 use std::str::FromStr;
@@ -258,8 +266,15 @@ where
     D: AsRef<[u8]>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.algorithm.name())?;
-        f.write_char('_')?;
+        match self.algorithm {
+            HashAlgorithm::Sha512_256 if cfg!(feature = "legacy") => f.write_str("sha512-256")?,
+            _ => f.write_str(self.algorithm.name())?,
+        };
+        if cfg!(feature = "legacy") {
+            f.write_char(':')?;
+        } else {
+            f.write_char('_')?;
+        }
         f.write_str(&self.raw_hex_string())?;
         Ok(())
     }

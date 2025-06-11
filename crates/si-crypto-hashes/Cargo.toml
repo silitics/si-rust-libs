@@ -15,6 +15,7 @@ sha2 = "0.10.9"
 [features]
 default = ["serde"]
 serde = ["dep:serde"]
+legacy = []
 
 [package.metadata.docs.rs]
 all-features = true
