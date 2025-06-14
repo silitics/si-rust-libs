@@ -1,6 +1,6 @@
 [package]
 name = "si-crypto-hashes"
-version = "0.1.1"
+version = "0.1.2"
 description = "This crate provides a reusable functionality for working with typical cryptographic hashes."
 edition = "2024"
 authors.workspace = true

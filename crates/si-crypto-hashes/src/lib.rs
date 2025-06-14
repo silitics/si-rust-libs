@@ -74,6 +74,16 @@ macro_rules! define_hash_algorithms {
                 }
             }
 
+            /// Names of the algorithm.
+            #[must_use]
+            pub const fn names(self) -> &'static [&'static str] {
+                match self {
+                    $(
+                        Self::$variant => &[$name $(, $alias)*],
+                    )*
+                }
+            }
+
             /// Create a fresh hasher.
             pub fn hasher(self) -> Hasher {
                 match self {
@@ -160,6 +170,19 @@ impl HashAlgorithm {
         let mut hasher = self.hasher();
         hasher.update(bytes);
         hasher.finalize()
+    }
+}
+
+impl std::fmt::Display for HashAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            f.write_str(self.names().last().expect("algorithm has names"))
+        } else {
+            match self {
+                HashAlgorithm::Sha512_256 if cfg!(feature = "legacy") => f.write_str("sha512-256"),
+                _ => f.write_str(self.name()),
+            }
+        }
     }
 }
 
@@ -266,10 +289,7 @@ where
     D: AsRef<[u8]>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.algorithm {
-            HashAlgorithm::Sha512_256 if cfg!(feature = "legacy") => f.write_str("sha512-256")?,
-            _ => f.write_str(self.algorithm.name())?,
-        }
+        self.algorithm.fmt(f)?;
         if cfg!(feature = "legacy") {
             f.write_char(':')?;
         } else {
