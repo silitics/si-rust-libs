@@ -35,5 +35,7 @@ pub fn main() {
         .apply(&args.logging)
         .init();
 
+    tracing::info!("Hello, World!");
+
     do_stuff(5);
 }
