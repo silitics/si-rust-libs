@@ -8,6 +8,7 @@
         "opentelemetry",
         "otlp",
         "protobuf",
+        "Reportify",
         "rsplit"
     ]
 }
