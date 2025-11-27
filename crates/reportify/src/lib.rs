@@ -190,6 +190,24 @@ macro_rules! new_whatever_type {
             }
         }
     };
+
+    ($(#[$meta:meta])* $vis:vis $name:ident ($message:literal)) => {
+        $(#[$meta])*
+        #[derive(Debug)]
+        $vis struct $name(());
+
+        impl $crate::Error for $name {
+            fn message(&self) -> Option<&dyn ::std::fmt::Display> {
+                Some($message)
+            }
+        }
+
+        impl $crate::Whatever for $name {
+            fn new() -> Self {
+                $name(())
+            }
+        }
+    };
 }
 
 #[macro_export]
