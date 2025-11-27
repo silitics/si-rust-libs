@@ -307,6 +307,9 @@ pub trait ResultExt {
     /// Only use this in case an error is a bug in the program, not an external error.
     fn assert_ok(self) -> Self::Value;
 
+    /// Log the error, if any, and return the value.
+    fn log_ok(self) -> Option<Self::Value>;
+
     /// Ignore the result and log the error, if any.
     fn ignore(self);
 }
@@ -357,6 +360,11 @@ impl<T, E: Error> ResultExt for Result<T, E> {
     #[track_caller]
     fn assert_ok(self) -> Self::Value {
         self.report().assert_ok()
+    }
+
+    #[track_caller]
+    fn log_ok(self) -> Option<Self::Value> {
+        self.report().log_ok()
     }
 
     #[track_caller]
@@ -426,6 +434,17 @@ impl<T, E: Error> ResultExt for Result<T, Report<E>> {
             Ok(value) => value,
             Err(report) => {
                 panic!("BUG: found error but expected value\n\n{report}");
+            }
+        }
+    }
+
+    #[track_caller]
+    fn log_ok(self) -> Option<Self::Value> {
+        match self {
+            Ok(value) => Some(value),
+            Err(report) => {
+                tracing::error!("ignoring error\n\n{report}");
+                None
             }
         }
     }
