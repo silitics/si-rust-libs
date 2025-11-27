@@ -198,7 +198,7 @@ macro_rules! new_whatever_type {
 
         impl $crate::Error for $name {
             fn message(&self) -> Option<&dyn ::std::fmt::Display> {
-                Some($message)
+                Some(&$message)
             }
         }
 
@@ -479,7 +479,7 @@ impl<T, E: Error> ResultExt for Result<T, Report<E>> {
 mod tests {
     use crate::{Report, ResultExt};
 
-    new_whatever_type!(pub TestError);
+    new_whatever_type!(pub TestError("test error"));
 
     fn example_bail() -> Result<(), Report<TestError>> {
         bail!("test");
