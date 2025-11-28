@@ -216,7 +216,7 @@ macro_rules! bail {
         return Err({
             let error = $crate::Whatever::new();
             Report::new(error, $crate::ReportContext::capture())
-        });
+        }).context(|| format!($($arg)*));
     };
 }
 
@@ -482,7 +482,8 @@ mod tests {
     new_whatever_type!(pub TestError("test error"));
 
     fn example_bail() -> Result<(), Report<TestError>> {
-        bail!("test");
+        let x = 1;
+        bail!("test {x}");
     }
 
     fn example_propagate_whatever() -> Result<(), Report<TestError>> {
