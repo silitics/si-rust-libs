@@ -61,11 +61,11 @@ impl<E: Error> Report<E> {
 
 // Allow the implicit conversion from `E` to `Report<E>`. Allows propagating errors
 // using the `?` operator while automatically capturing the context.
-impl<E: Error> From<E> for Report<E> {
+impl<E: Error, F: Error + Into<E>> From<F> for Report<E> {
     #[track_caller]
-    fn from(error: E) -> Self {
+    fn from(error: F) -> Self {
         let context = ReportContext::capture();
-        Self::new(error, context)
+        Self::new(error.into(), context)
     }
 }
 
