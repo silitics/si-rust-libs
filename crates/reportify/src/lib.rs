@@ -1,9 +1,11 @@
-use std::backtrace::{Backtrace, BacktraceStatus};
+use std::backtrace::Backtrace;
+use std::backtrace::BacktraceStatus;
 use std::error::Error as StdError;
 use std::fmt::Display;
 use std::panic::Location;
 
-use tracing_error::{SpanTrace, SpanTraceStatus};
+use tracing_error::SpanTrace;
+use tracing_error::SpanTraceStatus;
 
 /// Error with additional context information for reporting.
 #[derive(Debug)]
@@ -213,10 +215,10 @@ macro_rules! new_whatever_type {
 #[macro_export]
 macro_rules! bail {
     ($($arg:tt)*) => {
-        return Err({
+        return $crate::ResultExt::context(Err({
             let error = $crate::Whatever::new();
             Report::new(error, $crate::ReportContext::capture())
-        }).context(|| format!($($arg)*));
+        }), || format!($($arg)*));
     };
 }
 
@@ -477,7 +479,8 @@ impl<T, E: Error> ResultExt for Result<T, Report<E>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Report, ResultExt};
+    use crate::Report;
+    use crate::ResultExt;
 
     new_whatever_type!(pub TestError("test error"));
 
