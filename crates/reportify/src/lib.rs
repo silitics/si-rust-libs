@@ -41,6 +41,10 @@ impl<E: Error> Report<E> {
         self
     }
 
+    pub fn whatever<F: Whatever>(self) -> Report<F> {
+        F::propagate(self)
+    }
+
     /// Propagate the report converting the error using the given function.
     #[track_caller]
     fn propagate_map<F, M>(self, map: M) -> Report<F>
@@ -220,7 +224,7 @@ macro_rules! bail {
     ($($arg:tt)*) => {
         return $crate::ResultExt::context(Err({
             let error = $crate::Whatever::new();
-            crate::Report::new(error, $crate::ReportContext::capture())
+            $crate::Report::new(error, $crate::ReportContext::capture())
         }), || format!($($arg)*));
     };
 }
@@ -230,7 +234,7 @@ macro_rules! whatever {
     ($($arg:tt)*) => {
         {
             let error = $crate::Whatever::new();
-            crate::Report::new(error, $crate::ReportContext::capture()).with_context(format!($($arg)*))
+            $crate::Report::new(error, $crate::ReportContext::capture()).with_context(format!($($arg)*))
         }
     };
 }
