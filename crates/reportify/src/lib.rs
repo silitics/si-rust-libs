@@ -1,11 +1,9 @@
-use std::backtrace::Backtrace;
-use std::backtrace::BacktraceStatus;
+use std::backtrace::{Backtrace, BacktraceStatus};
 use std::error::Error as StdError;
 use std::fmt::Display;
 use std::panic::Location;
 
-use tracing_error::SpanTrace;
-use tracing_error::SpanTraceStatus;
+use tracing_error::{SpanTrace, SpanTraceStatus};
 
 /// Error with additional context information for reporting.
 #[derive(Debug)]
@@ -36,6 +34,11 @@ impl<E: Error> Report<E> {
     /// Consume the report and return the underlying error and context.
     pub fn into_parts(self) -> (E, ReportContext) {
         (self.error, *self.context)
+    }
+
+    pub fn with_context<C: Context<E>>(mut self, context: C) -> Self {
+        context.attach_to(&mut self);
+        self
     }
 
     /// Propagate the report converting the error using the given function.
@@ -217,8 +220,18 @@ macro_rules! bail {
     ($($arg:tt)*) => {
         return $crate::ResultExt::context(Err({
             let error = $crate::Whatever::new();
-            Report::new(error, $crate::ReportContext::capture())
+            crate::Report::new(error, $crate::ReportContext::capture())
         }), || format!($($arg)*));
+    };
+}
+
+#[macro_export]
+macro_rules! whatever {
+    ($($arg:tt)*) => {
+        {
+            let error = $crate::Whatever::new();
+            crate::Report::new(error, $crate::ReportContext::capture()).with_context(format!($($arg)*))
+        }
     };
 }
 
@@ -479,8 +492,7 @@ impl<T, E: Error> ResultExt for Result<T, Report<E>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::Report;
-    use crate::ResultExt;
+    use crate::{Report, ResultExt};
 
     new_whatever_type!(pub TestError("test error"));
 
