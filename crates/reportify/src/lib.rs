@@ -249,7 +249,7 @@ macro_rules! ensure {
 }
 
 #[macro_export]
-macro_rules! try_fail {
+macro_rules! return_error {
     ($expr:expr) => {
         match $expr {
             Ok(value) => value,
