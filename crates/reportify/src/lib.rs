@@ -248,6 +248,16 @@ macro_rules! ensure {
     };
 }
 
+#[macro_export]
+macro_rules! try_fail {
+    ($expr:expr) => {
+        match $expr {
+            Ok(value) => value,
+            Err(error) => return error,
+        }
+    };
+}
+
 /// Context that can be attached to a report.
 pub trait Context<E> {
     /// Attach this context to the given report.
