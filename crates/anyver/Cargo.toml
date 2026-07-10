@@ -1,0 +1,25 @@
+[package]
+name = "anyver"
+version = "0.1.0"
+description = "Scheme-agnostic version parsing and requirement matching, covering SemVer, CalVer, serial, and date-based version schemes without assuming any of them up front."
+edition = "2024"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/silitics/si-rust-libs/"
+keywords = ["version", "semver", "calver", "versioning"]
+categories = ["parser-implementations"]
+
+[dependencies]
+serde = { version = "1.0.228", optional = true, features = ["derive"] }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
