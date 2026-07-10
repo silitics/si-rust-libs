@@ -1,0 +1,26 @@
+[package]
+name = "byte-calc"
+version = "0.2.0"
+description = "Helper crate to work with bit, byte, and block sizes."
+edition = "2021"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/silitics/si-rust-libs/"
+keywords = ["bytes", "size", "no-std"]
+categories = ["no-std", "value-formatting"]
+
+[dependencies]
+bytes = { version = "1", optional = true }
+serde = { version = "1", optional = true }
+
+[features]
+bytes = ["dep:bytes"]
+serde = ["dep:serde"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
