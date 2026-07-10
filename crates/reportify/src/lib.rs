@@ -1,535 +1,209 @@
-use std::backtrace::{Backtrace, BacktraceStatus};
-use std::error::Error as StdError;
-use std::fmt::Display;
-use std::panic::Location;
-
-use tracing_error::{SpanTrace, SpanTraceStatus};
-
-/// Error with additional context information for reporting.
-#[derive(Debug)]
-pub struct Report<E> {
-    error: E,
-    context: Box<ReportContext>,
-}
-
-impl<E: Error> Report<E> {
-    /// Create a new report from the given error and context.
-    pub fn new(error: E, context: ReportContext) -> Self {
-        Self {
-            error,
-            context: Box::new(context),
-        }
-    }
-
-    /// Underlying error.
-    pub fn error(&self) -> &E {
-        &self.error
-    }
-
-    /// Underlying context.
-    pub fn context(&self) -> &ReportContext {
-        &self.context
-    }
-
-    /// Consume the report and return the underlying error and context.
-    pub fn into_parts(self) -> (E, ReportContext) {
-        (self.error, *self.context)
-    }
-
-    pub fn with_context<C: Context<E>>(mut self, context: C) -> Self {
-        context.attach_to(&mut self);
-        self
-    }
-
-    pub fn whatever<F: Whatever>(self) -> Report<F> {
-        F::propagate(self)
-    }
-
-    /// Propagate the report converting the error using the given function.
-    #[track_caller]
-    fn propagate_map<F, M>(self, map: M) -> Report<F>
-    where
-        M: FnOnce(E) -> F,
-    {
-        let mut context = self.context;
-        let error_item = context.items.get_mut(context.error_item).unwrap();
-        // Materialize or discard the error message before mapping the error.
-        if let Some(message) = self.error.message() {
-            error_item.1 = ReportItem::Message(message.to_string());
-        } else {
-            error_item.1 = ReportItem::Discarded;
-        }
-        context.error_item = context.items.len();
-        context.items.push((Location::caller(), ReportItem::Error));
-        Report {
-            error: map(self.error),
-            context,
-        }
-    }
-}
-
-// Allow the implicit conversion from `E` to `Report<E>`. Allows propagating errors
-// using the `?` operator while automatically capturing the context.
-impl<E: Error, F: Error + Into<E>> From<F> for Report<E> {
-    #[track_caller]
-    fn from(error: F) -> Self {
-        let context = ReportContext::capture();
-        Self::new(error.into(), context)
-    }
-}
-
-impl<E: Error> std::fmt::Display for Report<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: It might make sense to just leave the formatting of the error to the
-        // `Error` trait itself, such that it can be easily customized.
-        if let Some(message) = self.error.message() {
-            writeln!(f, "{}", message)?;
-        }
-        if let Some(error) = self.error.as_std_error() {
-            let mut source = error.source();
-            while let Some(error) = source {
-                writeln!(f, "  Caused by: {}", error)?;
-                source = error.source();
-            }
-        }
-        if !self.context.items.is_empty() {
-            writeln!(f, "")?;
-            for (location, item) in self.context.items.iter().rev() {
-                match item {
-                    ReportItem::Message(message) => writeln!(f, "{location}: {message}")?,
-                    ReportItem::Error => {
-                        if let Some(message) = self.error.message() {
-                            writeln!(f, "{location}: {message}")?;
-                        }
-                    }
-                    ReportItem::Discarded => { /* Nothing to do. */ }
-                }
-            }
-        }
-        if self.context.backtrace.status() == BacktraceStatus::Captured {
-            writeln!(f, "\nBacktrace:\n{}", self.context.backtrace)?;
-        }
-        if self.context.span_trace.status() == SpanTraceStatus::CAPTURED {
-            writeln!(f, "\nSpan Trace:\n{}", self.context.span_trace)?;
-        }
-        Ok(())
-    }
-}
-
-/// Context for error reporting.
-#[derive(Debug)]
-pub struct ReportContext {
-    backtrace: Backtrace,
-    span_trace: SpanTrace,
-    items: Vec<(&'static Location<'static>, ReportItem)>,
-    error_item: usize,
-}
-
-#[derive(Debug)]
-enum ReportItem {
-    Message(String),
-    Error,
-    Discarded,
-}
-
-impl ReportContext {
-    #[track_caller]
-    pub fn capture() -> Self {
-        let backtrace = Backtrace::capture();
-        let span_trace = SpanTrace::capture();
-        Self {
-            backtrace,
-            span_trace,
-            items: vec![(Location::caller(), ReportItem::Error)],
-            error_item: 0,
-        }
-    }
-}
-
-/// Error trait for errors that can be reported.
-pub trait Error: Send + Sync + 'static {
-    /// Error message.
-    fn message(&self) -> Option<&dyn Display>;
-
-    /// Try to cast the error into [`StdError`].
-    fn as_std_error(&self) -> Option<&dyn StdError> {
-        None
-    }
-}
-
-impl<E: StdError + Send + Sync + 'static> Error for E {
-    fn message(&self) -> Option<&dyn Display> {
-        Some(self)
-    }
-
-    fn as_std_error(&self) -> Option<&dyn StdError> {
-        Some(self)
-    }
-}
-
-/// Error that can be constructed from arbitrary errors.
-pub trait Whatever: Error {
-    fn new() -> Self;
-
-    #[track_caller]
-    fn propagate<E: Error>(report: Report<E>) -> Report<Self>
-    where
-        Self: Sized,
-    {
-        report.propagate_map(|_| Self::new())
-    }
-}
-
-#[macro_export]
-macro_rules! new_whatever_type {
-    ($(#[$meta:meta])* $vis:vis $name:ident) => {
-        $(#[$meta])*
-        #[derive(Debug)]
-        $vis struct $name(());
-
-        impl $crate::Error for $name {
-            fn message(&self) -> Option<&dyn ::std::fmt::Display> {
-                None
-            }
-        }
-
-        impl $crate::Whatever for $name {
-            fn new() -> Self {
-                $name(())
-            }
-        }
-    };
-
-    ($(#[$meta:meta])* $vis:vis $name:ident ($message:literal)) => {
-        $(#[$meta])*
-        #[derive(Debug)]
-        $vis struct $name(());
-
-        impl $crate::Error for $name {
-            fn message(&self) -> Option<&dyn ::std::fmt::Display> {
-                Some(&$message)
-            }
-        }
-
-        impl $crate::Whatever for $name {
-            fn new() -> Self {
-                $name(())
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! bail {
-    ($($arg:tt)*) => {
-        return $crate::ResultExt::context(Err({
-            let error = $crate::Whatever::new();
-            $crate::Report::new(error, $crate::ReportContext::capture())
-        }), || format!($($arg)*));
-    };
-}
-
-#[macro_export]
-macro_rules! whatever {
-    ($($arg:tt)*) => {
-        {
-            let error = $crate::Whatever::new();
-            $crate::Report::new(error, $crate::ReportContext::capture()).with_context(format!($($arg)*))
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! ensure {
-    ($cond:expr, $($args:tt)*) => {
-        if !$cond {
-            $crate::bail!($($args)*)
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! return_error {
-    ($expr:expr) => {
-        match $expr {
-            Ok(value) => value,
-            Err(error) => return error,
-        }
-    };
-}
-
-/// Context that can be attached to a report.
-pub trait Context<E> {
-    /// Attach this context to the given report.
-    fn attach_to(self, report: &mut Report<E>);
-}
-
-impl<E, F, C> Context<E> for F
-where
-    F: FnOnce() -> C,
-    C: Context<E>,
-{
-    #[track_caller]
-    fn attach_to(self, report: &mut Report<E>) {
-        (self)().attach_to(report);
-    }
-}
-
-impl<E> Context<E> for &str {
-    #[track_caller]
-    fn attach_to(self, report: &mut Report<E>) {
-        self.to_owned().attach_to(report);
-    }
-}
-
-impl<E> Context<E> for String {
-    #[track_caller]
-    fn attach_to(self, report: &mut Report<E>) {
-        report
-            .context
-            .items
-            .push((Location::caller(), ReportItem::Message(self)))
-    }
-}
-
-/// Trait for types that can be reported.
-pub trait Reportify<O> {
-    /// Report this type.
-    fn report(self) -> O;
-}
-
-impl<E: Error> Reportify<Report<E>> for E {
-    #[track_caller]
-    fn report(self) -> Report<E> {
-        let context = ReportContext::capture();
-        Report::new(self, context)
-    }
-}
-
-impl<T, E: Error> Reportify<Result<T, Report<E>>> for Result<T, E> {
-    #[track_caller]
-    fn report(self) -> Result<T, Report<E>> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(error) => Err(error.report()),
-        }
-    }
-}
-
-/// Extension trait for [`Result`] that adds additional methods for reporting errors.
-pub trait ResultExt {
-    /// Value type of the result.
-    type Value;
-    /// Error type of the result.
-    type Error;
-
-    /// Add context to the result.
-    fn context<C: Context<Self::Error>>(
-        self,
-        context: C,
-    ) -> Result<Self::Value, Report<Self::Error>>;
-
-    /// Propagate the error without adding context.
-    fn propagate<F>(self) -> Result<Self::Value, Report<F>>
-    where
-        Self::Error: Into<F>;
-
-    /// Propagate an error as another error.
-    fn propagate_map<F, M>(self, map: M) -> Result<Self::Value, Report<F>>
-    where
-        M: FnOnce(Self::Error) -> F;
-
-    /// Propagate the error and add context.
-    fn propagate_with<C, F>(self, context: C) -> Result<Self::Value, Report<F>>
-    where
-        C: Context<F>,
-        F: Error,
-        Self::Error: Into<F>;
-
-    /// Propagate the error using [`Whatever`] to construct the new error.
-    fn whatever<F: Whatever>(self) -> Result<Self::Value, Report<F>>;
-
-    /// Assert that the result is [`Ok`] according to a program invariant.
-    ///
-    /// Only use this in case an error is a bug in the program, not an external error.
-    fn assert_ok(self) -> Self::Value;
-
-    /// Log the error, if any, and return the value.
-    fn log_ok(self) -> Option<Self::Value>;
-
-    /// Ignore the result and log the error, if any.
-    fn ignore(self);
-}
-
-impl<T, E: Error> ResultExt for Result<T, E> {
-    type Value = T;
-    type Error = E;
-
-    #[track_caller]
-    fn context<C: Context<Self::Error>>(
-        self,
-        context: C,
-    ) -> Result<Self::Value, Report<Self::Error>> {
-        self.report().context(context)
-    }
-
-    #[track_caller]
-    fn propagate<F>(self) -> Result<Self::Value, Report<F>>
-    where
-        Self::Error: Into<F>,
-    {
-        self.report().propagate()
-    }
-
-    #[track_caller]
-    fn propagate_map<F, M>(self, map: M) -> Result<Self::Value, Report<F>>
-    where
-        M: FnOnce(Self::Error) -> F,
-    {
-        self.report().propagate_map(map)
-    }
-
-    #[track_caller]
-    fn propagate_with<C, F>(self, context: C) -> Result<Self::Value, Report<F>>
-    where
-        C: Context<F>,
-        F: Error,
-        Self::Error: Into<F>,
-    {
-        self.report().propagate_with(context)
-    }
-
-    #[track_caller]
-    fn whatever<F: Whatever>(self) -> Result<Self::Value, Report<F>> {
-        self.report().whatever()
-    }
-
-    #[track_caller]
-    fn assert_ok(self) -> Self::Value {
-        self.report().assert_ok()
-    }
-
-    #[track_caller]
-    fn log_ok(self) -> Option<Self::Value> {
-        self.report().log_ok()
-    }
-
-    #[track_caller]
-    fn ignore(self) {
-        self.report().ignore()
-    }
-}
-
-impl<T, E: Error> ResultExt for Result<T, Report<E>> {
-    type Value = T;
-    type Error = E;
-
-    #[track_caller]
-    fn context<C: Context<Self::Error>>(
-        self,
-        context: C,
-    ) -> Result<Self::Value, Report<Self::Error>> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(mut report) => {
-                context.attach_to(&mut report);
-                Err(report)
-            }
-        }
-    }
-
-    #[track_caller]
-    fn propagate<F>(self) -> Result<Self::Value, Report<F>>
-    where
-        Self::Error: Into<F>,
-    {
-        self.propagate_map(|error| error.into())
-    }
-
-    #[track_caller]
-    fn propagate_map<F, M>(self, map: M) -> Result<Self::Value, Report<F>>
-    where
-        M: FnOnce(Self::Error) -> F,
-    {
-        match self {
-            Ok(value) => Ok(value),
-            Err(report) => Err(report.propagate_map(map)),
-        }
-    }
-
-    #[track_caller]
-    fn propagate_with<C, F>(self, context: C) -> Result<Self::Value, Report<F>>
-    where
-        C: Context<F>,
-        F: Error,
-        Self::Error: Into<F>,
-    {
-        self.propagate().context(context)
-    }
-
-    #[track_caller]
-    fn whatever<F: Whatever>(self) -> Result<Self::Value, Report<F>> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(report) => Err(F::propagate(report)),
-        }
-    }
-
-    #[track_caller]
-    fn assert_ok(self) -> Self::Value {
-        match self {
-            Ok(value) => value,
-            Err(report) => {
-                panic!("BUG: found error but expected value\n\n{report}");
-            }
-        }
-    }
-
-    #[track_caller]
-    fn log_ok(self) -> Option<Self::Value> {
-        match self {
-            Ok(value) => Some(value),
-            Err(report) => {
-                tracing::error!("ignoring error\n\n{report}");
-                None
-            }
-        }
-    }
-
-    #[track_caller]
-    fn ignore(self) {
-        if let Err(report) = self {
-            tracing::error!("ignoring error\n\n{report}");
-        }
-    }
-}
-
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(missing_docs)]
+//! Typed error reports with structured diagnostic context, causes and contributing
+//! factors, configurable rendering, and panic capture.
+//!
+//! # Overview
+//!
+//! Errors are part of an API's contract, and deserve the same care as its types and
+//! function signatures. Propagating a single type-erased error everywhere, e.g., with
+//! `anyhow`, gives callers nothing to match on: the contract at every boundary collapses
+//! to "something failed". Turning every internal failure into its own explicit enum
+//! variant goes too far the other way: internal implementation detail becomes a public
+//! commitment, so a new failure mode deep inside a function turns into a breaking change
+//! to its signature.
+//!
+//! This crate is built around [`Report<E>`]: a typed error, `E`, paired with everything
+//! else needed to explain a failure. `E` is the contract, curated to include only what
+//! callers are actually meant to handle differently, and propagated with `?`. Everything
+//! else, a message, a backtrace, structured fields, a suggestion, is diagnostic detail
+//! that doesn't belong in that contract, regardless of whether it ends up read by a
+//! person, a log pipeline, or an automated triage system. The two stay separate.
+//!
+//! # Errors and Context
+//!
+//! A [`Report<E>`] pairs a typed `error: E`, the value a program branches on, with a
+//! [`Context`]: everything else needed to explain the failure. A context holds a
+//! narrative of [`Annotation`]s ([`Message`]s describing what happened,
+//! [`Suggestion`]s for what to do about it), structured [`Field`]s, a captured backtrace,
+//! an optional cause, and any number of contributing factors.
+//!
+//! Sometimes there is no meaningful specific error type. Some failures will only ever be
+//! reported, never matched on. [`Whatever`] is the escape hatch for that case: a marker
+//! error type, defined with [`new_whatever_type!`], that carries no data of its own and
+//! is used through [`bail!`], [`whatever!`], or [`ResultExt::whatever`]. It never carries
+//! an implicit message. Every report still needs an explicit description at the point of
+//! failure.
+//!
+//! # Cause and Factors
+//!
+//! A cause and a contributing factor make different claims, so `reportify` keeps them
+//! separate instead of treating both the same way.
+//!
+//! [`Report::escalate`] produces a new, differently-typed report with `self` nested
+//! inside as its [`Context::cause`]. This is the usual way a failure crosses an
+//! abstraction boundary, and it is the only way a cause gets set. There is no way to
+//! attach a cause to an already-existing report, only to derive a new report from an old
+//! one, so a cause is never ambiguous about whether it actually led to the report: it
+//! did, since escalating is what produced the report in the first place.
+//!
+//! [`Report::with_factor`]/[`Report::with_factors`] attach one or more independent
+//! [`Context::factors`] instead, e.g., every validation error found, not just the first
+//! one. A factor makes no claim that it alone was necessary or sufficient, unlike a
+//! cause. A report can have a cause, factors, or both.
+//!
+//! # Capturing Panics
+//!
+//! A panic caught with [`catch_unwind`] becomes a [`Report<Panicked>`], with a real
+//! backtrace and location. A bare [`std::panic::catch_unwind`] cannot recover either on
+//! its own, since by the time it returns, the stack has already unwound. [`Panicked`]
+//! keeps the raw panic payload, not just an extracted message, so callers can still tell
+//! a genuine bug apart from a deliberate, non-error use of `resume_unwind`, e.g., as a
+//! cancellation signal.
+//!
+//! Call [`install_panic_hook`] near the top of `main`, before spawning any other threads,
+//! to install [`catch_unwind`]'s hook eagerly rather than lazily on first use, closing a
+//! narrow race where a panic on a different thread at that exact moment could otherwise
+//! slip through uncaptured. [`install_pretty_panic_hook`] additionally takes over how an
+//! *uncaught* panic prints, rendering it the same way a [`Report`] does instead of the
+//! default hook's plain banner, unconditionally, even for a panic some ancestor
+//! [`catch_unwind`] goes on to recover from. Unlike a regular [`Report<E>`], a panic is
+//! never something the environment, configuration, or a user did wrong: it always means
+//! a bug, so the rendered panic always says so, as a suggestion, alongside whatever
+//! [`PrettyPanicOptions`] tells callers about reporting it, e.g., an issue tracker URL
+//! or the application's own version.
+//!
+//! # Logging
+//!
+//! [`ResultExt::log_error`]/[`ResultExt::log_warning`]/[`ResultExt::log_info`] log a
+//! report through `tracing` at the matching level and return the success value as an
+//! `Option`, discarding the report either way; [`ResultExt::ignore`] is `log_error` with
+//! the value discarded too. The rendered report becomes the event's message; the
+//! error's [`Error::type_name`] and [`Error::code`] (when it has one) are attached as
+//! separate `error.type`/`error.code` fields, so a structured subscriber can filter or
+//! group on them without parsing the message text. `tracing` is consequently always a
+//! dependency, not an opt-in feature: these are the only methods that actually consume
+//! a report, rather than annotate or propagate it further.
+//!
+//! # Export
+//!
+//! [`Report::export`]/[`Report::export_with`] turn a report into an
+//! [`export::ExportedReport`] for machine consumption: structured logs, an API error
+//! response, whatever needs the failure as data rather than text. It mirrors the report's
+//! own cause and factors. Fields marked [`Sensitive`](Visibility::Sensitive) or
+//! [`Secret`](Visibility::Secret), and the captured backtrace and span trace, are all
+//! excluded by default and only included if the caller opts in through
+//! [`export::ExportOptions`]. Unlike [`Report::render`], the backtrace and span trace
+//! stay structured data ([`export::ExportedFrame`]/[`export::ExportedSpan`]) rather than
+//! pre-rendered text, and the backtrace is the raw, unfiltered capture: no frames are
+//! skipped the way a rendered backtrace skips reportify's own frames.
+//!
+//! # Rendering
+//!
+//! `Display` (`{report}`) and `Debug` (`{report:?}`) render a report as a tree, causes
+//! and factors nested under arrows, the way [`Report::escalate`] and
+//! [`Report::with_factor`]/[`Report::with_factors`] built them. `Debug` additionally
+//! shows captured backtraces and span traces.
+//!
+//! [`Report::render`] takes explicit [`render::RenderOptions`] for anything else: plain
+//! ASCII instead of Unicode box-drawing, forced or disabled color, or a compact view
+//! without locations. [`Report::print`]/[`Report::eprint`] render and print directly to
+//! stdout/stderr, correcting the color mode to check whichever stream they actually print
+//! to.
+//!
+//! A message/suggestion/field value wider than the terminal otherwise just soft-wraps
+//! however the terminal decides, with no indent under the part that wrapped, since there
+//! is no newline there to attach one to. [`render::RenderOptions::wrap`] fixes that by
+//! wrapping ahead of time to a fixed width or the actual terminal width, off by default.
+//!
+//! A verbose backtrace skips reportify's own frames and the runtime's startup frames,
+//! keeping only what the caller actually wrote, e.g., `inner`/`middle`/`main` rather than
+//! also `Report::new`/`Context::capture` on one end and the runtime's launch machinery on
+//! the other. This needs the `backtrace` feature; without it, a captured backtrace
+//! renders unfiltered.
+//!
+//! A configuration file that could not be read at all, escalated into a higher-level
+//! error with a field and a suggestion attached, renders like this:
+#![doc = r#"
+<pre>
+<span style="color:#DD3311;"><b>unable to load configuration</b></span>
+├╴at <span style="color:#888888;">crates/reportify/examples/config.rs:18:10</span>
+├╴path: config.toml
+├╴suggestion: <span style="color:#0099DD;">create one by copying `config.example.toml` to `config.toml`</span>
+│
+╰─▶ cause: <span style="color:#DD3311;"><b>file not found</b></span>
+    ╰╴at <span style="color:#888888;">crates/reportify/examples/config.rs:17:5</span>
+</pre>
+"#]
+//!
+//! See the [`render`] module for ASCII/no-color output, a compact view, verbose
+//! backtraces, and a report with independent factors instead of a cause.
+//!
+//! # Getting Started
+//!
+//! ```
+//! use reportify::{Report, ResultExt, bail, new_whatever_type};
+//!
+//! new_whatever_type! {
+//!     /// Application-level error.
+//!     pub AppError
+//! }
+//!
+//! fn load_config(path: &std::path::Path) -> Result<String, Report<AppError>> {
+//!     if path.as_os_str().is_empty() {
+//!         bail!("configuration path must not be empty");
+//!     }
+//!
+//!     std::fs::read_to_string(path)
+//!         .whatever("unable to read configuration")
+//!         .field("path", path)
+//! }
+//! ```
+//!
+//! # Features
+//!
+//! - `backtrace` (enabled by default) captures backtraces through the `backtrace` crate
+//!   instead of `std::backtrace`, so a verbose render can skip reportify's own frames and
+//!   the runtime's startup frames.
+//! - `color` (enabled by default) colors rendered reports through `console`, when the
+//!   output looks like it is going to a terminal that supports it. Without it,
+//!   [`render::ColorMode::Always`]/[`render::ColorMode::AutoStdout`]/
+//!   [`render::ColorMode::AutoStderr`] behave like [`render::ColorMode::Never`].
+//! - `spantrace` (enabled by default) captures a `tracing-error` span trace alongside the
+//!   backtrace, so a report also shows which `tracing` spans were active when it was
+//!   created.
+//! - `serde` derives `Serialize` for [`export::ExportedReport`] and the other exported
+//!   types, for shipping structured logs.
+
+mod annotation;
+mod backtrace;
+mod context;
+mod erased;
+mod error;
+pub mod export;
+mod ext;
+mod location;
+mod macros;
+mod panic;
+pub mod render;
+mod report;
 #[cfg(test)]
-mod tests {
-    use crate::{Report, ResultExt};
+mod tests;
+mod value;
 
-    new_whatever_type!(pub TestError("test error"));
+pub use annotation::{Annotation, IntoMessage, IntoSuggestion, Message, Suggestion};
+pub use backtrace::Backtrace;
+pub use context::Context;
+pub use erased::ErasedReport;
+pub use error::{Error, Whatever};
+pub use ext::{ErrorExt, ResultExt};
+pub use location::SourceLocation;
+pub use panic::{
+    Panicked, PrettyPanicOptions, catch_unwind, install_panic_hook, install_pretty_panic_hook,
+    install_pretty_panic_hook_with,
+};
+pub use report::Report;
+pub use value::{Field, Value, Visibility};
 
-    fn example_bail() -> Result<(), Report<TestError>> {
-        let x = 1;
-        bail!("test {x}");
-    }
-
-    fn example_propagate_whatever() -> Result<(), Report<TestError>> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "file not found",
-        ))
-        .whatever()
-    }
-
-    #[test]
-    fn test_bail() {
-        assert!(example_bail().is_err());
-    }
-
-    #[test]
-    fn test_propagate_whatever() {
-        assert!(example_propagate_whatever().is_err());
-    }
-}
+/// A result whose error is a [`Report`].
+pub type Result<T, E> = std::result::Result<T, Report<E>>;

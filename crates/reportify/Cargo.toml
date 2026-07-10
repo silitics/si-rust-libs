@@ -1,14 +1,38 @@
 [package]
 name = "reportify"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+rust-version = "1.91"
+description = "Typed error reports with structured diagnostic context, causes and contributing factors, configurable rendering, and panic capture."
+readme = "README.md"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage = "https://github.com/silitics/si-rust-libs/"
+keywords = ["error", "diagnostics", "reporting", "observability", "panic"]
+categories = ["rust-patterns"]
 
 [dependencies]
+backtrace = { version = "0.3.76", optional = true }
+console = { workspace = true, optional = true }
+serde = { version = "1.0.228", optional = true, features = ["derive"] }
 tracing.workspace = true
-tracing-error = "0.2.1"
+tracing-error = { version = "0.2.1", optional = true }
+
+[features]
+default = ["backtrace", "color", "spantrace"]
+backtrace = ["dep:backtrace"]
+color = ["dep:console"]
+serde = ["dep:serde"]
+spantrace = ["dep:tracing-error"]
+
+[dev-dependencies]
+serde_json = "1.0.150"
+thiserror = "2.0.18"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]
 workspace = true
