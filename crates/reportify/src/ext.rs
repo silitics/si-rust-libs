@@ -1,5 +1,7 @@
 //! Extension traits for errors and results.
 
+use std::fmt::{Debug, Display};
+
 use crate::annotation::{IntoMessage, IntoSuggestion};
 use crate::error::{Error, Whatever};
 use crate::report::Report;
@@ -114,6 +116,20 @@ pub trait ResultExt<T, Err: Error> {
     /// Returns `Err` exactly when `self` was `Err`.
     fn field(self, key: impl Into<String>, value: impl Into<Value>) -> Result<T, Report<Err>>;
 
+    /// Same as [`ResultExt::field`], formatting `value` with [`Display`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` exactly when `self` was `Err`.
+    fn field_display(self, key: impl Into<String>, value: impl Display) -> Result<T, Report<Err>>;
+
+    /// Same as [`ResultExt::field`], formatting `value` with [`Debug`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` exactly when `self` was `Err`.
+    fn field_debug(self, key: impl Into<String>, value: impl Debug) -> Result<T, Report<Err>>;
+
     /// Log the report at error level, if any, and return the value.
     ///
     /// The rendered report is the event's message; `error.type` and `error.code` (when
@@ -219,6 +235,18 @@ impl<T, E: Error> ResultExt<T, E> for Result<T, E> {
     }
 
     #[track_caller]
+    fn field_display(self, key: impl Into<String>, value: impl Display) -> Result<T, Report<E>> {
+        self.report()
+            .map_err(|report| report.field_display(key, value))
+    }
+
+    #[track_caller]
+    fn field_debug(self, key: impl Into<String>, value: impl Debug) -> Result<T, Report<E>> {
+        self.report()
+            .map_err(|report| report.field_debug(key, value))
+    }
+
+    #[track_caller]
     fn log_error(self) -> Option<T> {
         self.report().log_error()
     }
@@ -302,6 +330,14 @@ impl<T, E: Error> ResultExt<T, E> for Result<T, Report<E>> {
 
     fn field(self, key: impl Into<String>, value: impl Into<Value>) -> Result<T, Report<E>> {
         self.map_err(|report| report.field(key, value))
+    }
+
+    fn field_display(self, key: impl Into<String>, value: impl Display) -> Result<T, Report<E>> {
+        self.map_err(|report| report.field_display(key, value))
+    }
+
+    fn field_debug(self, key: impl Into<String>, value: impl Debug) -> Result<T, Report<E>> {
+        self.map_err(|report| report.field_debug(key, value))
     }
 
     fn log_error(self) -> Option<T> {

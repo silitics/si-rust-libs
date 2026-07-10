@@ -130,6 +130,24 @@ impl<E: Error> Report<E> {
         self
     }
 
+    /// Attach a public field, formatting `value` with [`Display`].
+    ///
+    /// Shorthand for `.field(key, value.to_string())`, for a displayable value with no
+    /// [`Value`] conversion of its own, e.g., a `SocketAddr`.
+    #[must_use]
+    pub fn field_display(self, key: impl Into<String>, value: impl Display) -> Self {
+        self.field(key, value.to_string())
+    }
+
+    /// Attach a public field, formatting `value` with [`Debug`].
+    ///
+    /// Shorthand for `.field(key, format!("{value:?}"))`, for a value with no [`Display`]
+    /// impl at all, e.g., a [`Duration`](std::time::Duration).
+    #[must_use]
+    pub fn field_debug(self, key: impl Into<String>, value: impl Debug) -> Self {
+        self.field(key, format!("{value:?}"))
+    }
+
     /// Attach a sensitive field (excluded from export unless explicitly requested).
     #[must_use]
     pub fn sensitive_field(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {

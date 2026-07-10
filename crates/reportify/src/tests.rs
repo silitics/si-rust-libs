@@ -150,6 +150,45 @@ fn result_ext_field_captures_the_real_caller_location() {
 }
 
 #[test]
+fn field_display_and_field_debug_format_the_value() {
+    let addr: std::net::SocketAddr = "127.0.0.1:8080".parse().expect("valid socket address");
+    let report = Report::<TestError>::whatever("failed")
+        .field_display("addr", addr)
+        .field_debug("timeout", std::time::Duration::from_secs(5));
+    let fields = report.context().fields();
+    assert_eq!(fields[0].value.to_string(), "127.0.0.1:8080");
+    assert_eq!(fields[1].value.to_string(), "5s");
+}
+
+#[test]
+fn result_ext_field_display_and_field_debug_work_on_both_impls() {
+    let addr: std::net::SocketAddr = "127.0.0.1:8080".parse().expect("valid socket address");
+    let timeout = std::time::Duration::from_secs(5);
+
+    let bare: std::result::Result<(), SourceError> = Err(SourceError);
+    let report = bare
+        .field_display("addr", addr)
+        .field_debug("timeout", timeout)
+        .expect_err("must fail");
+    assert_eq!(
+        report.context().fields()[0].value.to_string(),
+        "127.0.0.1:8080"
+    );
+    assert_eq!(report.context().fields()[1].value.to_string(), "5s");
+
+    let already: crate::Result<(), TestError> = Err(Report::whatever("inner"));
+    let report = already
+        .field_display("addr", addr)
+        .field_debug("timeout", timeout)
+        .expect_err("must fail");
+    assert_eq!(
+        report.context().fields()[0].value.to_string(),
+        "127.0.0.1:8080"
+    );
+    assert_eq!(report.context().fields()[1].value.to_string(), "5s");
+}
+
+#[test]
 fn result_ext_assert_ok_returns_the_value_when_ok() {
     let result: std::result::Result<i32, SourceError> = Ok(42);
     assert_eq!(result.assert_ok("value expected"), 42);
