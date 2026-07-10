@@ -22,6 +22,8 @@ use tracing_error::SpanTrace;
 use crate::backtrace::Backtrace;
 use crate::error::Error;
 use crate::location::SourceLocation;
+#[cfg(feature = "color")]
+use crate::render::ColorMode;
 use crate::report::Report;
 use crate::value::Value;
 
@@ -132,13 +134,7 @@ fn render_uncaught_panic(
     let location = info
         .location()
         .map_or_else(SourceLocation::caller, SourceLocation::from_std);
-    let suggestion = match &options.report_to {
-        Some(report_to) => {
-            format!("this indicates a bug in the program; please report it at {report_to}")
-        }
-        None => "this indicates a bug in the program".to_owned(),
-    };
-    let mut report = Report::from_capture(
+    let report = Report::from_capture(
         UncaughtPanic,
         location,
         Backtrace::force_capture(),
@@ -146,10 +142,59 @@ fn render_uncaught_panic(
         SpanTrace::capture(),
     )
     .message(message.to_owned());
+    append_pretty_panic_footer(format!("{report:?}"), options)
+}
+
+/// Append `options`' fields and `report_to` suggestion as a plain-text footer after
+/// `rendered`, below a rule divider (matching the crate's own backtrace-trailer style).
+///
+/// Kept out of the report tree entirely, rather than attached as a field/suggestion on
+/// whatever report triggered the panic: they describe the panicking *process* as a whole
+/// (its version, where to report bugs), not that specific report, and attaching them to
+/// it would misleadingly suggest otherwise, e.g., on
+/// [`ResultExt::assert_ok`](crate::ResultExt::assert_ok)'s report, which already has its
+/// own, more specific cause chain.
+pub(crate) fn append_pretty_panic_footer(
+    mut rendered: String,
+    options: &PrettyPanicOptions,
+) -> String {
+    use std::fmt::Write as _;
+
+    let _ = write!(rendered, "\n\n━━━━\n\n");
     for (key, value) in &options.fields {
-        report = report.field(key.clone(), value.clone());
+        let _ = writeln!(rendered, "{key}: {value}");
     }
-    format!("{:?}", report.suggestion(suggestion))
+    let suggestion = match &options.report_to {
+        Some(report_to) => {
+            format!("this indicates a bug in the program; please report it at {report_to}")
+        }
+        None => "this indicates a bug in the program".to_owned(),
+    };
+    rendered.push_str(&style_footer_suggestion(&suggestion));
+    rendered
+}
+
+#[cfg(feature = "color")]
+fn style_footer_suggestion(text: &str) -> String {
+    crate::render::styled(console::style(text).cyan(), ColorMode::AutoStderr).to_string()
+}
+
+#[cfg(not(feature = "color"))]
+fn style_footer_suggestion(text: &str) -> String {
+    text.to_owned()
+}
+
+/// Append the globally configured fields and `report_to` suggestion (set via
+/// [`install_pretty_panic_hook_with`]), if any were configured, as a plain-text footer
+/// after `rendered`. A no-op if pretty panic printing was never installed. Used to give a
+/// panic built from an already-existing [`Report`] (e.g.
+/// [`ResultExt::assert_ok`](crate::ResultExt::assert_ok)) the same footer an ordinary
+/// uncaught panic gets under [`install_pretty_panic_hook`].
+pub(crate) fn decorate_with_pretty_panic_options(rendered: String) -> String {
+    match PRETTY_PRINT.get() {
+        Some(options) => append_pretty_panic_footer(rendered, options),
+        None => rendered,
+    }
 }
 
 static PRETTY_PRINT: OnceLock<PrettyPanicOptions> = OnceLock::new();

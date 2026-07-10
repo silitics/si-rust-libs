@@ -211,6 +211,7 @@ fn result_ext_assert_ok_captures_the_real_caller_location_and_shows_the_report_w
 
 #[test]
 fn result_ext_on_report_assert_ok_captures_the_real_caller_location_and_shows_the_report() {
+    let original_line = line!() + 1;
     let result: crate::Result<(), TestError> = Err(Report::whatever("must not happen"));
     let expected_line = line!() + 1;
     let outcome = catch_unwind(AssertUnwindSafe(|| result.assert_ok("must always succeed")));
@@ -219,6 +220,32 @@ fn result_ext_on_report_assert_ok_captures_the_real_caller_location_and_shows_th
     assert_eq!(panic_report.context().location().line, expected_line);
     assert!(format!("{panic_report}").contains("must always succeed"));
     assert!(format!("{panic_report}").contains("must not happen"));
+    // The rendered text embedded in `panic_report`'s message must show two distinct
+    // locations: where the original report was created, and where `assert_ok` itself
+    // was called (i.e., where the invariant was assumed) - not just the latter, which
+    // `panic_report.context().location()` above already captures via a different route
+    // (`#[track_caller]` on `panic_any` itself, unrelated to escalating the report).
+    let rendered = format!("{panic_report}");
+    assert!(rendered.contains(&format!("{}:{original_line}", file!())));
+    assert!(rendered.contains(&format!("{}:{expected_line}", file!())));
+}
+
+// Tested directly against `apply_pretty_panic_options`, not through the
+// `install_pretty_panic_hook_with`/`PRETTY_PRINT` global: that `OnceLock` can only ever
+// be set once for the whole test binary, so a test relying on it would be dependent on
+// whichever test happens to set it first.
+#[test]
+fn assert_ok_panic_includes_report_to_suggestion_and_fields_as_a_footer() {
+    let report = Report::<TestError>::whatever("must not happen");
+    let rendered = format!("{report:?}");
+    let options = crate::PrettyPanicOptions::new()
+        .with_report_to("https://example.com/issues/new")
+        .with_field("version", "1.2.3");
+    let footed = crate::panic::append_pretty_panic_footer(rendered.clone(), &options);
+    // The footer is appended after the report's own rendering, not attached to it.
+    assert!(footed.starts_with(&rendered));
+    assert!(footed.contains("please report it at https://example.com/issues/new"));
+    assert!(footed.contains("version: 1.2.3"));
 }
 
 #[test]

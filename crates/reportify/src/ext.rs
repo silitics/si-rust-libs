@@ -161,11 +161,15 @@ pub trait ResultExt<T, Err: Error> {
     ///
     /// # Panics
     ///
-    /// Panics, showing `invariant` and the full rendered report, if `self` was `Err`. If
-    /// left uncaught, this prints just that rendered text to stderr, not the default
-    /// panic hook's own "thread panicked at" banner and (with `RUST_BACKTRACE` set) its
-    /// separate, unfiltered backtrace, which would otherwise show up redundantly right
-    /// next to the one already inside the rendered report.
+    /// Panics, showing `invariant` and the full rendered report, if `self` was `Err`.
+    /// Escalates the original report first, so the panic shows this call's own location
+    /// and backtrace (where the assumption was made) with the original report nested
+    /// underneath as its cause (where the failure actually happened) — both are usually
+    /// needed to debug a violated invariant. If left uncaught, this prints just that
+    /// rendered text to stderr, not the default panic hook's own "thread panicked at"
+    /// banner and (with `RUST_BACKTRACE` set) its separate, unfiltered backtrace, which
+    /// would otherwise show up redundantly right next to the ones already inside the
+    /// rendered report.
     fn assert_ok(self, invariant: impl IntoMessage) -> T;
 }
 
@@ -269,6 +273,27 @@ impl<T, E: Error> ResultExt<T, E> for Result<T, E> {
     #[track_caller]
     fn assert_ok(self, invariant: impl IntoMessage) -> T {
         self.report().assert_ok(invariant)
+    }
+}
+
+/// Marker error escalated into by [`ResultExt::assert_ok`], so the resulting panic
+/// carries the assert call's own location and backtrace, with the original report kept
+/// as its cause.
+struct InvariantViolation;
+
+impl Debug for InvariantViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InvariantViolation").finish()
+    }
+}
+
+impl Error for InvariantViolation {
+    fn message(&self) -> Option<&dyn Display> {
+        None
+    }
+
+    fn type_name(&self) -> &'static str {
+        "invariant"
     }
 }
 
@@ -390,10 +415,15 @@ impl<T, E: Error> ResultExt<T, E> for Result<T, Report<E>> {
     fn assert_ok(self, invariant: impl IntoMessage) -> T {
         match self {
             Ok(value) => value,
-            Err(report) => crate::panic::panic_rendered(format!(
-                "{}: expected a value, found an unexpected error:\n\n{report:?}",
-                invariant.into_message().text
-            )),
+            Err(report) => {
+                let message = invariant.into_message();
+                let escalated = report
+                    .escalate(InvariantViolation)
+                    .message(format!("violated invariant: {}", message.text));
+                let rendered =
+                    crate::panic::decorate_with_pretty_panic_options(format!("{escalated:?}"));
+                crate::panic::panic_rendered(rendered)
+            }
         }
     }
 }

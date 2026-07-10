@@ -149,6 +149,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
 
 [[package]]
+name = "byte-calc"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "serde",
+]
+
+[[package]]
 name = "bytes"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1079,7 +1087,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reportify"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "backtrace",
  "console",
